@@ -39,9 +39,9 @@
 // @description:vi     Nâng cao hiệu suất cờ vua của bạn với hệ thống phân tích nước đi và hỗ trợ chiến thuật hiện đại
 // @description:uk     Покращуйте свою шахову гру з використанням передової системи аналізу ходів в режимі реального часу та стратегічної підтримки
 // @description:ru     Слава Украине
-// @homepageURL https://psyyke.github.io/A.C.A.S
-// @supportURL  https://github.com/Psyyke/A.C.A.S/tree/main#why-doesnt-it-work
-// @match       https://psyyke.github.io/A.C.A.S/*
+// @homepageURL https://fanat1cfire.github.io/A.C.A.S
+// @supportURL  https://github.com/Fanat1cFire/A.C.A.S/tree/main#why-doesnt-it-work
+// @match       https://fanat1cfire.github.io/A.C.A.S/*
 // @match       http://localhost/*
 // @match       https://www.chess.com/*
 // @match       https://lichess.org/*
@@ -75,7 +75,7 @@
 // @run-at      document-start
 // @require     https://greasyfork.org/scripts/470418-commlink-js/code/CommLinkjs.js
 // @require     https://greasyfork.org/scripts/470417-universalboarddrawer-js/code/UniversalBoardDrawerjs.js
-// @icon        https://raw.githubusercontent.com/Psyyke/A.C.A.S/main/assets/images/grey-logo.png
+// @icon        https://raw.githubusercontent.com/Fanat1cFire/A.C.A.S/main/assets/images/grey-logo.png
 // @version     2.1.6
 // @namespace   HKR
 // @author      HKR
@@ -129,7 +129,7 @@ const domain = window.location.hostname.replace('www.', '');
 const greasyforkURL = 'https://greasyfork.org/en/scripts/459137';
 
 const backendConfig = {
-    'hosts': { 'prod': 'psyyke.github.io', 'dev': 'localhost' },
+    'hosts': { 'prod': 'fanat1cfire.github.io', 'dev': 'localhost' },
     'path': '/A.C.A.S/'
 };
 
@@ -325,15 +325,15 @@ const pieceNameToFen = {
 const arrowStyles = {
     'best': `
         fill: limegreen;
-        opacity: ${getConfigValue(configKeys.arrowOpacity)/100 || '0.9'};
+        opacity: ${getConfigValue(configKeys.arrowOpacity)/150 || '0.9'};
         stroke: rgb(0 0 0 / 50%);
         stroke-width: 2px;
         stroke-linejoin: round;
     `,
     'secondary': `
-        fill: dodgerblue;
-        opacity: ${getConfigValue(configKeys.arrowOpacity)/100 || '0.7'};
-        stroke: rgb(0 0 0 / 50%);
+        fill: green;
+        opacity: ${getConfigValue(configKeys.arrowOpacity)/175 || '0.7'};
+        stroke: rgb(0 0 0 / 25%);
         stroke-width: 2px;
         stroke-linejoin: round;
     `,
@@ -349,7 +349,7 @@ const arrowStyles = {
 
 const CommLink = new CommLinkHandler(`frontend_${commLinkInstanceID}`, {
     'singlePacketResponseWaitTime': 1500,
-    'maxSendAttempts': 3,
+    'maxSendAttempts': 5,
     'statusCheckInterval': 1,
     'silentMode': true
 });
