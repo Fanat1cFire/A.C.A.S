@@ -525,10 +525,9 @@ class BackendInstance {
 
     engineStartNewGame(variant) {
         const chessVariant = formatVariant(variant);
-
+        this.engine.postMessage('setoption name Threads value 6');
         this.engineStopCalculating();
 
-        this.engine.postMessage('setoption name Threads value 6');
         this.engine.postMessage('ucinewgame'); // very important to be before setting variant and so forth
         this.engine.postMessage('uci'); // to display variants
 
