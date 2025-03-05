@@ -6,7 +6,8 @@ function createInstance(domain, instanceID, chessVariant) {
     chessVariant = formatVariant(chessVariant); // important
 
     if(!instanceExists) {
-        toast.message(`Received new instance request from ${domain}!`, 2000);
+        const msg = transObj?.newInstanceRequest ?? 'New match found!';
+        toast.message(`${msg} (${domain})`, 2000);
 
         instances.push({
             'domain': domain,
@@ -33,11 +34,28 @@ function prelongInstanceLife(domain, instanceID, chessVariant) {
     if(instanceObj) {
         instanceObj.date = Date.now();
 
-        const currentActiveVariant = instanceObj.instance.chessVariant;
+        const i = instanceObj.instance;
+        const instanceProfiles = Object.keys(i.pV);
+        const currentActiveVariants = instanceProfiles.map(profileName => {
+            return {
+                'currentVariant': i.pV[profileName].chessVariant,
+                'availableVariants': i.pV[profileName].chessVariants,
+                profileName
+            };
+        });
 
-        if(chessVariant && formatVariant(chessVariant) !== formatVariant(currentActiveVariant)) {
-            instanceObj.instance.engineStartNewGame(chessVariant);
-        }
+        if(!chessVariant) return;
+
+        currentActiveVariants.forEach(obj => {
+            const newVariantFormatted = formatVariant(chessVariant);
+            const currentVariantFormatted = formatVariant(obj.currentVariant);
+
+            const newVariantExistsForEngine = obj.availableVariants.find(x => x === newVariantFormatted) ? true : false;
+
+            if(newVariantExistsForEngine && newVariantFormatted !== currentVariantFormatted) {
+                instanceObj.instance.engineStartNewGame(newVariantFormatted, obj.profileName);
+            }
+        });
     }
 }
 
@@ -53,7 +71,8 @@ setInterval(() => {
 
         if(instanceAgeMs > 4000) {
             if(instanceAgeMs > 10000) {
-                toast.warning(`Terminated instance from ${instanceObj.domain} due to lost connection.\n\nUnexpected? Visit the ${instanceObj.domain} tab to reactivate A.C.A.S.`, 5000);
+                const warningMsg = transObj?.instanceConnectionTermination ?? 'Terminated instance due to lost connection.\n\nUnexpected? Visit the tab to reactivate A.C.A.S.';
+                toast.warning(`${warningMsg} (${instanceObj.domain})`, 5000);
 
                 instanceObj.instance.close();
             } else {

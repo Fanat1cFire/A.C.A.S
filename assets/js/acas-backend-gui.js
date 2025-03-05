@@ -36,9 +36,22 @@ const ttsSpeedRangeElem = document.querySelector('#tts-speed-range');
 
 const userscriptInfoElem = document.querySelector('#userscript-info-small');
 
+const updateYourUserscriptElem = document.querySelector('#update-your-userscript-notification');
+
 const instanceSizeChangeContainerElem = document.querySelector('#instance-size-change-container');
 const decreaseInstanceSizeBtn = document.querySelector('#decrease-instance-size-btn');
 const increaseInstanceSizeBtn = document.querySelector('#increase-instance-size-btn');
+
+const chessVariantDropdown = document.querySelector('#chess-variant-dropdown');
+const engineEloInput = document.querySelector('#engine-elo-input');
+const lc0WeightDropdown = document.querySelector('#lc0-weight-dropdown');
+const engineNodesInput = document.querySelector('#engine-nodes-input');
+
+const addNewProfileBtn = document.querySelector('#add-new-profile-button');
+const profileDropdown = document.querySelector('#chess-engine-profile-dropdown');
+const deleteProfileBtn = document.querySelector('#delete-profile-button');
+
+let lastProfileID = null;
 
 if(userscriptInfoElem && typeof USERSCRIPT === 'object' && USERSCRIPT?.GM_info) {
     const GM_info = USERSCRIPT?.GM_info;
@@ -49,6 +62,10 @@ if(userscriptInfoElem && typeof USERSCRIPT === 'object' && USERSCRIPT?.GM_info) 
     const userscriptData = [GM_info?.script?.author, GM_info?.script?.version]?.join(' ');
 
     document.title = `A.C.A.S (Using ${userscriptData})`;
+
+    if(GM_info?.script?.version && isBelowVersion(GM_info?.script?.version, '2.2.2')) {
+        updateYourUserscriptElem.classList.remove('hidden');
+    }
     
     userscriptInfoElem.innerText = ['System Information', platformData, userscriptManagerData, userscriptData, Date.now()].join(' | ');
 } else {
@@ -91,9 +108,17 @@ seeSupportedSitesBtn.onclick = () => {
     noInstancesSitesElem.classList.toggle('hidden');
 }
 
+addNewProfileBtn.onclick = () => {
+    createNewProfile();
+}
+
+deleteProfileBtn.onclick = () => {
+    deleteProfile();
+}
+
 const options = [settingsNavbarGlobalElem, settingsInstanceDropdownElem];
 
-const settingFilterObj = { 'type': 'global', 'instanceID': null };
+const settingFilterObj = { 'type': 'global', 'instanceID': null, 'profileID': null };
 
 const guiBroadcastChannel = new BroadcastChannel('gui');
 
@@ -110,8 +135,11 @@ guiBroadcastChannel.onmessage = e => {
     }
 };
 
-function displayNoUserscriptNotification() {
-    installNotificationElem.classList.remove('hidden');
+function displayNoUserscriptNotification(isEnable) {
+    if(isEnable)
+        installNotificationElem.classList.add('hidden');
+    else
+        installNotificationElem.classList.remove('hidden');
 }
 
 function displayTOS() {
@@ -166,7 +194,7 @@ function removeInstanceFromSettingsDropdown(instanceID) {
 function fillChessVariantDropdowns(arr) {
     const chessVariantsArr = arr.sort((a, b) => a.localeCompare(b));
 
-    const chessVariantDropdownElems = [...document.querySelectorAll('.chess-variant-dropdown')];
+    const chessVariantDropdownElems = [...document.querySelectorAll('#chess-variant-dropdown')];
 
     chessVariantDropdownElems
         .filter(elem => !elem.getAttribute('filled-successfully'))
@@ -187,6 +215,76 @@ function fillTTSVoiceNameDropdown() {
     ttsVoices.forEach(x => addDropdownItem(ttsNameDropdownElem, x));
 
     return true;
+}
+
+function createNewProfile() {
+    while(true) {
+        const msg = transObj?.profileNamePrompt ?? 'Enter the profile name:';
+        const profileName = prompt(`${msg} `);
+
+        if(!profileName) break;
+        
+        const nameExists = [...profileDropdown.querySelectorAll('.dropdown-item')].find(elem => elem.dataset.value === formatProfileName(profileName));
+
+        if(nameExists) {
+            const msg = transObj?.profileNameExists ?? 'That name already exists!';
+            alert(msg);
+        }
+
+        if(profileName.length > 0 && !nameExists) {
+            const itemElem = addDropdownItem(profileDropdown, formatProfileName(profileName));
+
+            setTimeout(() => {
+                itemElem.click();
+            }, 100);
+
+            break;
+        }
+    }
+    
+    updateSettingsValues();
+}
+
+function fillProfileDropdown() {
+    const profileNames = getProfileNames();
+
+    if(!profileNames) return false;
+
+    profileNames.forEach(profileName => {
+        const nameExists = [...profileDropdown.querySelectorAll('.dropdown-item')].find(elem => elem.dataset.value === formatProfileName(profileName));
+
+        if(!nameExists) {
+            const itemElem = addDropdownItem(profileDropdown, formatProfileName(profileName));
+            const currentActiveProfileName = getGmConfigValue(USERSCRIPT.dbValues.chessEngineProfile, settingFilterObj.instanceID, false);
+
+            if(profileName === currentActiveProfileName) {
+                setTimeout(() => {
+                    itemElem.click();
+                }, 100);
+            }
+        }
+    });
+}
+
+function deleteProfile() {
+    const warningText = transObj?.profileRemovalWarning ?? 'Are you sure you want to remove this profile?\n\nThis action cannot be reversed.';
+
+    if(confirm(warningText)) {
+        const profileName = document.querySelector('input[data-key="chessEngineProfile"]').value;
+
+        removeDropdownItem(profileDropdown, profileName);
+
+        const configDatabaseKey = USERSCRIPT.dbValues.AcasConfig;
+        const config = USERSCRIPT.GM_getValue(configDatabaseKey);
+
+        if(settingFilterObj.instanceID) {
+            delete config?.[settingFilterObj.type]?.[settingFilterObj.instanceID]?.['profiles']?.[profileName];
+        } else {
+            delete config?.[settingFilterObj.type]?.['profiles']?.[profileName];
+        }
+
+        USERSCRIPT.GM_setValue(configDatabaseKey, config);
+    }
 }
 
 const waitForTTSVoices = setInterval(() => {
@@ -257,6 +355,36 @@ function makeSettingChanges(inputElem) {
                 ttsNameDropdownElem.classList.add('disabled-input');
                 ttsSpeedRangeElem.classList.add('disabled-input');
             }
+            break;
+        case 'chessEngine':
+            if(value === 'lc0') {
+                chessVariantDropdown.classList.add('hidden');
+                engineEloInput.classList.add('hidden');
+                
+                engineNodesInput.classList.remove('hidden');
+                lc0WeightDropdown.classList.remove('hidden');
+            } else {
+                chessVariantDropdown.classList.remove('hidden');
+                engineEloInput.classList.remove('hidden');
+
+                engineNodesInput.classList.add('hidden');
+                lc0WeightDropdown.classList.add('hidden');
+            }
+            break;
+        case 'chessEngineProfile':
+            settingFilterObj.profileID = value;
+
+            if(value !== 'default') {
+                deleteProfileBtn.style.visibility = 'revert';
+            } else {
+                deleteProfileBtn.style.visibility = 'hidden';
+            }
+
+            if(lastProfileID !== value) {
+                lastProfileID = value;
+
+                updateSettingsValues();
+            }
 
             break;
     }
@@ -265,7 +393,9 @@ function makeSettingChanges(inputElem) {
 function updateSettingsValues() {
     [...document.querySelectorAll('input[data-key]')].forEach(inputElem => {
         const key = inputElem.dataset.key;
-        const value = getGmConfigValue(key, settingFilterObj.instanceID);
+        const noProfile = inputElem.dataset.noProfile;
+
+        const value = getGmConfigValue(key, settingFilterObj.instanceID, noProfile ? false : settingFilterObj.profileID);
 
         if(typeof value === 'boolean' || value) {
             setInputValue(inputElem, value);
@@ -287,20 +417,45 @@ function saveSetting(settingElem) {
     const configDatabaseKey = USERSCRIPT.dbValues.AcasConfig;
     const config = USERSCRIPT.GM_getValue(configDatabaseKey);
 
-    if(settingFilterObj.instanceID) {
-        config[settingFilterObj.type][settingFilterObj.instanceID] = config[settingFilterObj.type][settingFilterObj.instanceID] || {};
-        config[settingFilterObj.type][settingFilterObj.instanceID][settingObj.key] = settingObj.value;
+    const noProfile = settingElem.dataset.noProfile;
+
+    if (settingFilterObj.instanceID) {
+        let base = config[settingFilterObj.type];
+        
+        // Initialize the instanceID object
+        initNestedObject(base, [settingFilterObj.instanceID]);
+    
+        if (noProfile) {
+            config[settingFilterObj.type][settingFilterObj.instanceID][settingObj.key] = settingObj.value;
+        } else {
+            // Initialize profiles and profileID objects
+            initNestedObject(base[settingFilterObj.instanceID], ['profiles', settingFilterObj.profileID]);
+    
+            config[settingFilterObj.type][settingFilterObj.instanceID]['profiles'][settingFilterObj.profileID][settingObj.key] = settingObj.value;
+        }
     } else {
-        config[settingFilterObj.type][settingObj.key] = settingObj.value;
+        let base = config[settingFilterObj.type];
+        
+        if (noProfile) {
+            // Initialize the type object
+            initNestedObject(config, [settingFilterObj.type]);
+    
+            config[settingFilterObj.type][settingObj.key] = settingObj.value;
+        } else {
+            // Initialize profiles and profileID objects
+            initNestedObject(base, ['profiles', settingFilterObj.profileID]);
+    
+            config[settingFilterObj.type]['profiles'][settingFilterObj.profileID][settingObj.key] = settingObj.value;
+        }
     }
 
     USERSCRIPT.GM_setValue(configDatabaseKey, config);
     
     makeSettingChanges(settingElem);
 
-    guiBroadcastChannel.postMessage({ 'type': 'settingSave', 'data' : { 'key': settingObj.key, 'value': settingObj.value }});
+    guiBroadcastChannel.postMessage({ 'type': 'settingSave', 'data' : { 'key': settingObj.key, 'value': settingObj.value, 'profile': getProfile(settingFilterObj.profileID) }});
     
-    console.log(`[Setting Handler] Added config key ${settingObj.key} with value ${settingObj.value}`);
+    console.log(`[Setting Handler] Added config key ${settingObj.key} with value ${settingObj.value}\n-> Instance ${settingFilterObj.instanceID ? settingFilterObj.instanceID : '(No instance)'}, Profile ${noProfile ? '(No profile)' : settingFilterObj.profileID}`);
 }
 
 function removeSetting(settingElem) {
@@ -311,10 +466,20 @@ function removeSetting(settingElem) {
     const configDatabaseKey = USERSCRIPT.dbValues.AcasConfig;
     const config = USERSCRIPT.GM_getValue(configDatabaseKey);
 
+    const noProfile = settingElem.dataset.noProfile;
+
     if(settingFilterObj.instanceID) {
-        delete config?.[settingFilterObj.type]?.[settingFilterObj.instanceID]?.[settingObj.key];
+        if(noProfile) {
+            delete config?.[settingFilterObj.type]?.[settingFilterObj.instanceID]?.[settingObj.key];
+        } else {
+            delete config?.[settingFilterObj.type]?.[settingFilterObj.instanceID]?.['profiles']?.[settingFilterObj.profileID]?.[settingObj.key];
+        }
     } else {
-        delete config?.[settingFilterObj.type]?.[settingObj.key];
+        if(noProfile) {
+            delete config?.[settingFilterObj.type]?.[settingObj.key];
+        } else {
+            delete config?.[settingFilterObj.type]?.['profiles']?.[settingFilterObj.profileID]?.[settingObj.key];
+        }
     }
 
     USERSCRIPT.GM_setValue(configDatabaseKey, config);
@@ -351,12 +516,15 @@ function importSettings() {
 
                     console.log('Successfully imported settings from a config file!');
 
-                    toast.success('Successfully imported settings from a config file!', 5000);
+                    const msg = transObj?.configImportSuccess ?? 'Successfully imported settings from a config file!';
+                    toast.success(msg, 5000);
                 } else {
-                    toast.error('Invalid config file, missing "global" or "instance" keys!', 15000);
+                    const msg = transObj?.configInvalidError ?? 'Invalid config file, missing "global" or "instance" keys!';
+                    toast.error(msg, 15000);
                 }
                 } catch (error) {
-                    toast.error(`Error while loading config!\n\nError parsing JSON: ${error}`, 30000);
+                    const msg = transObj?.configUnknownError ?? `Error while loading config!`;
+                    toast.error(`${msg}\n\n${error}`, 30000);
                 }
             };
 
@@ -364,7 +532,8 @@ function importSettings() {
         } 
         
         else {
-            toast.error(`Wrong file type loaded, the config needs to be a .json file!`, 30000);
+            const msg = transObj?.configInvalidFiletype ?? `Wrong file type loaded, the config needs to be a .json file!`;
+            toast.error(msg, 30000);
         }
     };
     
@@ -384,9 +553,9 @@ function exportSettings() {
 }
 
 async function resetSettings() {
-    const confirmed = confirm('Are you sure you want to reset settings?\n\nDANGER: This action is irreversable and will reset your whole config!');
+    const warningText = transObj?.settingsResetWarning ?? 'Are you sure you want to reset settings?\n\nDANGER: This action is irreversable and will reset your whole config!';
 
-    if(confirmed) {
+    if(confirm(warningText)) {
         const config = USERSCRIPT.GM_getValue(USERSCRIPT.dbValues.AcasConfig);
 
         config.global = {};
@@ -396,7 +565,7 @@ async function resetSettings() {
 
         toggleSelected(settingsNavbarGlobalElem);
 
-        toast.success(`Config reseted successfully!`, 10000);
+        location.reload();
     }
 }
 
@@ -406,7 +575,7 @@ function toggleSelected(selectedElem, instanceID) {
 
     switch(settingFilterObj.type) {
         case 'global':
-            settingsNavbarSubtitleElem.innerText = 'Settings affect every instance, unless settings applied to specific instance';
+            settingsNavbarSubtitleElem.innerText = 'Settings affect every instance';
             break;
         case 'instance':
             settingFilterObj.instanceID = instanceID;
@@ -438,6 +607,19 @@ function addDropdownItem(dropdownElem, itemValue, itemText) {
         itemElem.innerText = itemText ? itemText : itemValue;
 
     listContainerElem.appendChild(itemElem);
+
+    return itemElem;
+}
+
+function removeDropdownItem(dropdownElem, itemValue, newValue) {
+    const dropdownItem = dropdownElem.querySelector(`*[data-value="${itemValue}"]`);
+    const dropdownInput = dropdownElem.querySelector('input[data-default-value]');
+
+    dropdownInput.value = newValue || dropdownInput.dataset.defaultValue;
+
+    dropdownItem?.remove();
+
+    dropdownInput.dispatchEvent(new Event('change'));
 }
 
 function initializeDropdown(dropdownElem) {
@@ -446,12 +628,13 @@ function initializeDropdown(dropdownElem) {
     const listContainerElem = dropdownElem.querySelector('.dropdown-list-container');
 
     function updateDropdown(showAll) {
-        const listItems = [...listContainerElem.querySelectorAll('.dropdown-item')];
+        const listItems = [...listContainerElem.querySelectorAll('.dropdown-item')]
+            .filter(x => x?.dataset?.value);
 
         const optionsArr = listItems.map(elem => elem.dataset.value);
 
         const filterStr = inputElem.value.toLowerCase();
-        const filteredOptions = optionsArr.filter(option => option.toLowerCase().startsWith(filterStr));
+        const filteredOptions = optionsArr.filter(option => !option || option.toLowerCase().startsWith(filterStr));
 
         const options = showAll ? optionsArr : filteredOptions;
 
@@ -483,9 +666,9 @@ function initializeDropdown(dropdownElem) {
     inputElem.addEventListener('input', () => updateDropdown(false));
     iconElem.addEventListener('click', () => updateDropdown(true));
 
-    updateDropdown();
+    updateDropdown(true);
 
-    new MutationObserver(() => updateDropdown())
+    new MutationObserver(() => updateDropdown(true))
         .observe(listContainerElem, { childList: true, subtree: true });
 }
 
@@ -527,7 +710,8 @@ function initGUI() {
                     saveSetting(elem);
 
                     if(e?.target?.dataset?.key === 'displayMovesOnExternalSite') {
-                        toast.create('message', '👁‍🗨', `Refresh the external site to see changes!`, 2000);
+                        const msg = transObj?.refreshSiteNotification ?? 'Refresh the external site to see changes!';
+                        toast.create('message', '👁‍🗨', msg, 2000);
                     }
                 } else {
                     removeSetting(elem);
@@ -536,6 +720,8 @@ function initGUI() {
         });
 
     settingsNavbarGlobalElem.onclick = () => toggleSelected(settingsNavbarGlobalElem);
+
+    fillProfileDropdown();
 
     new MutationObserver(() => {
         if([...acasInstanceContainer.querySelectorAll('.acas-instance')]?.length > 0) {

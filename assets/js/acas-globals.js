@@ -1,6 +1,8 @@
 const repositoryURL = 'https://github.com/Psyyke/A.C.A.S'; // old relics, not in use
 const repositoryRawURL = null; // old relics, not in use
 
+let transObj = null; // set by acas-i18n-processor.js
+
 const log = {
     info: (...message) => console.log(`[A.C.A.S]%c ${message.join(' ')}`, 'color: #67a9ef;'),
     success: (...message) => console.log(`[A.C.A.S]%c ${message.join(' ')}`, 'color: #67f08a;')
@@ -148,12 +150,126 @@ function convertToCorrectType(data) {
     return data;
 }
 
+function countPieces(fen) {
+    const pieceCount = {};
+    const position = fen.split(' ')[0];
+
+    for (let char of position) {
+        if (/[rnbqkpRNBQKP]/.test(char)) {
+            pieceCount[char] = (pieceCount[char] || 0) + 1;
+        }
+    }
+    
+    return pieceCount;
+}
+
+function countTotalPieces(fen) {
+    let pieceCount = 0;
+    const position = fen.split(' ')[0];
+
+    for (let char of position) {
+        if (/[rnbqkpRNBQKP]/.test(char)) {
+            pieceCount += (pieceCount[char] || 0) + 1;
+        }
+    }
+    
+    return pieceCount;
+}
+
+function fenToArray(fen) {
+    const rows = fen.split('/');
+    const board = [];
+
+    for (let row of rows) {
+        const boardRow = [];
+        for (let char of row) {
+            if (isNaN(char)) {
+                boardRow.push(char);
+            } else {
+                boardRow.push(...Array(parseInt(char)).fill(''));
+            }
+        }
+        board.push(boardRow);
+    }
+
+    return board;
+}
+
 function capitalize(s) {
     return s && s[0].toUpperCase() + s.slice(1);
 }
 
-function getGmConfigValue(key, instanceID) {
+function getProfile(profileName) {
+    const configDatabaseKey = USERSCRIPT.dbValues.AcasConfig;
+    const config = USERSCRIPT.GM_getValue(configDatabaseKey);
+    let profile = { 'name': profileName, 'config': null };
+
+    const instanceProfileObj = config?.[settingFilterObj.type]?.[settingFilterObj.instanceID]?.['profiles']?.[profileName];
+    const profileObj = config?.[settingFilterObj.type]?.['profiles']?.[profileName];
+    const globalProfileObj = config?.['global']?.['profiles']?.[profileName];
+
+    if(instanceProfileObj) {
+        profile.config = { ...globalProfileObj, ...instanceProfileObj };
+
+    } else if(profileObj) {
+        profile.config = profileObj;
+    } else {
+        return false;
+    }
+
+    return profile;
+}
+
+function getProfileNames() {
+    const configDatabaseKey = USERSCRIPT.dbValues.AcasConfig;
+    const config = USERSCRIPT.GM_getValue(configDatabaseKey);
+
+    const instanceProfilesObj = config?.[settingFilterObj.type]?.[settingFilterObj.instanceID]?.['profiles'];
+
+    if(instanceProfilesObj) return Object.keys(instanceProfilesObj);
+
+    const profilesObj = config?.[settingFilterObj.type]?.['profiles'];
+
+    if(profilesObj) return Object.keys(profilesObj);
+
+    console.error('Could not found profile names!', { ...settingFilterObj, configDatabaseKey, config });
+
+    return false;
+}
+
+function getProfiles() {
+    const profileNameArr = getProfileNames();
+    
+    if(!profileNameArr) {
+        console.error('getProfiles() failed, did not find any profile names!');
+
+        return [];
+    }
+
+    const profileArr = profileNameArr.map(profileName => getProfile(profileName));
+
+    return profileArr;
+}
+
+function getGmConfigValue(key, instanceID, profileID) {
+    if(typeof profileID === 'object') {
+        profileID = profileID.name;
+    }
+
     const config = USERSCRIPT.GM_getValue(USERSCRIPT.dbValues.AcasConfig);
+
+    if(profileID) {
+        const globalProfileValue = config?.global?.['profiles']?.[profileID]?.[key];
+        const instanceProfileValue = config?.instance?.[instanceID]?.['profiles']?.[profileID]?.[key];
+
+        if(instanceProfileValue !== undefined) {
+            return instanceProfileValue;
+        }
+
+        if(globalProfileValue !== undefined) {
+            return globalProfileValue;
+        }
+    }
 
     const instanceValue = config?.instance?.[instanceID]?.[key];
     const globalValue = config?.global?.[key];
@@ -351,4 +467,55 @@ function setIntervalAsync(callback, interval) {
     loop();
 
     return { stop: () => running = false };
+}
+
+function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split('; ') : [];
+    for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].split('=');
+        if (cookie[0] === name) return decodeURIComponent(cookie.slice(1).join('='));
+    }
+    return null;
+}
+
+async function waitForElement(selector, maxWaitTime = 10000000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxWaitTime) {
+        const element = document.querySelector(selector);
+        if (element) {
+            return element;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms before checking again
+    }
+    console.warn(`Element ${selector} not found after ${maxWaitTime / 1000} seconds`);
+    return null;
+}
+
+async function loadFileAsUint8Array(url) {
+    try {
+        const response = await fetch(url);
+        const buffer = await response.arrayBuffer();
+        return new Uint8Array(buffer);
+    } catch (error) {
+        console.error("Error loading file:", error);
+        return null;
+    }
+}
+
+function isBelowVersion(versionStr, targetVersion) {
+    return versionStr.localeCompare(targetVersion, undefined, {numeric: true}) === -1;
+}
+
+function formatProfileName(profileNameStr) {
+    return profileNameStr
+        .trim()
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .replace(/\s+/g, '');
+}
+
+function initNestedObject(obj, keys) {
+    keys.reduce((acc, key) => {
+        if (!acc[key]) acc[key] = {};
+        return acc[key];
+    }, obj);
 }
